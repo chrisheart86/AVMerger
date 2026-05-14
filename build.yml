@@ -1,0 +1,74 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python telepitese
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fuggosegek telepitese
+        run: pip install pyinstaller tkinterdnd2
+
+      - name: ffmpeg letoltese
+        shell: pwsh
+        run: |
+          $url = "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip"
+          Invoke-WebRequest $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          Copy-Item "ffmpeg_tmp\ffmpeg-7.1.1-essentials_build\bin\ffmpeg.exe" "ffmpeg.exe"
+          Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
+
+      - name: tkdnd mappa megkeresese
+        shell: pwsh
+        id: tkdnd
+        run: |
+          $pkg = python -c "import tkinterdnd2; print(tkinterdnd2.__file__)"
+          $dir = Split-Path $pkg
+          $tkdnd = Get-ChildItem $dir -Recurse -Directory | Where-Object { $_.Name -like "tkdnd*" } | Select-Object -First 1
+          if ($tkdnd) {
+            echo "path=$($tkdnd.FullName)" >> $env:GITHUB_OUTPUT
+            echo "name=$($tkdnd.Name)" >> $env:GITHUB_OUTPUT
+            echo "found=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "found=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Build (tkdnd-vel)
+        if: steps.tkdnd.outputs.found == 'true'
+        run: >
+          pyinstaller
+          --onefile
+          --windowed
+          --name AVMerger
+          --add-data "ffmpeg.exe;."
+          --add-data "${{ steps.tkdnd.outputs.path }};tkinterdnd2/${{ steps.tkdnd.outputs.name }}"
+          av_merger.py
+
+      - name: Build (tkdnd nelkul)
+        if: steps.tkdnd.outputs.found == 'false'
+        run: >
+          pyinstaller
+          --onefile
+          --windowed
+          --name AVMerger
+          --add-data "ffmpeg.exe;."
+          av_merger.py
+
+      - name: EXE feltoltese artifact-kent
+        uses: actions/upload-artifact@v4
+        with:
+          name: AVMerger-Windows
+          path: dist/AVMerger.exe
+          retention-days: 90
